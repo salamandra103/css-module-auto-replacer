@@ -1,0 +1,25 @@
+{
+  "name": "par",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@swc/core": "^1.6.1",
+    "classnames": "^2.5.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.7",
+    "@babel/preset-typescript": "^7.24.7",
+    "@babel/types": "^7.24.7",
+    "@types/babel__core": "^7.20.5",
+    "@types/node": "^20.14.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.2"
+  }
+}
