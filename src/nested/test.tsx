@@ -1,4 +1,4 @@
-import classnames from 'classnames'
+// import classnames from 'classnames'
 import {Example2} from "./test2.js"
 
 const Example = () => {

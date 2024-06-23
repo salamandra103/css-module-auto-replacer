@@ -11,9 +11,10 @@ import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const rootDir = path.resolve(__dirname, '..')
 
 
-function getFileAllFiles(dir: string): string[] {
+function getFileComponents(dir: string): string[] {
     return fs.readdirSync(path.resolve(__dirname, dir), {
         recursive: true
     }).reduce<string[]>((acc, item) => {
@@ -22,14 +23,25 @@ function getFileAllFiles(dir: string): string[] {
         } else {
             const stat = fs.statSync(path.resolve(__dirname, item))
             const ext = path.extname(path.resolve(__dirname, item))
-
-            if (stat.isFile() && ext === '.tsx') {
+            if (stat.isFile() && (isComponent(ext) || isCss(ext))) {
                 return [...acc, item]
             }
             return acc
         }
 
     }, [])
+}
+
+function isComponent(ext: string) {
+    return !!(ext.match(/\.(tsx)/g)?.length)
+}
+
+function isCss(ext: string) {
+    return !!(ext.match(/\.css/g)?.length)
+}
+
+function isCssModule(ext: string) {
+    return !!(ext.match(/\.module\.css/g)?.length)
 }
 
 function readFile(filePath: string): string {
@@ -40,11 +52,16 @@ function readFile(filePath: string): string {
     }
 }
 
-const filePaths = getFileAllFiles('./');
+const filePaths = getFileComponents('./');
 
-const replaceClassNamesToModulePlugin = (): babel.PluginObj => {
+function replaceClassNamesToModulePlugin(): babel.PluginObj {
     let isClassnamesModuleImported = false;
+    let lastImportDeclaretionIndex = null;
     return {
+        pre(file) {
+            isClassnamesModuleImported = false;
+            lastImportDeclaretionIndex = null
+        },
         visitor: {
             // {
             //     type: 'JSXAttribute',
@@ -58,7 +75,6 @@ const replaceClassNamesToModulePlugin = (): babel.PluginObj => {
             //     }
             // },
             Program(path) {
-                debugger
                 if (t.isProgram(path.node, { sourceType: 'module' }) && !isClassnamesModuleImported) {
                     let moduleIdentificator = t.identifier('cx');
                     let defaultModuleSpecifier = t.importDefaultSpecifier(moduleIdentificator);
@@ -67,14 +83,17 @@ const replaceClassNamesToModulePlugin = (): babel.PluginObj => {
 
                     let parentBodyNodePaths = path.get('body');
                     for (let i = 0; i < parentBodyNodePaths.length; i++) {
-                        debugger
+                        const currentNode = parentBodyNodePaths[i];
 
-                        if (!t.isImportDeclaration(parentBodyNodePaths[i].node)) {
-                            debugger
-                            parentBodyNodePaths[i].insertBefore(importDeclaretion)
-                            break;
+                        if (t.isImportDeclaration(currentNode.node)) {
+                            lastImportDeclaretionIndex = i;
+                            if (!isClassnamesModuleImported && currentNode.node.source.value === 'classnames') {
+                                isClassnamesModuleImported = true;
+                            }
                         }
-                        debugger
+                    }
+                    if (!isClassnamesModuleImported) {
+                        lastImportDeclaretionIndex !== null ? parentBodyNodePaths[lastImportDeclaretionIndex].insertAfter(importDeclaretion) : parentBodyNodePaths[0].insertBefore(importDeclaretion)
                     }
 
 
@@ -83,27 +102,15 @@ const replaceClassNamesToModulePlugin = (): babel.PluginObj => {
 
                 }
             },
-            ImportDeclaration(path) {
-                debugger
-                if (path.get('source').node.value === 'classnames') {
-                    debugger
-                    isClassnamesModuleImported = true
-                } else {
-
-                }
-            },
             JSXAttribute(path) {
                 const attributeNameNode = path.get('name').node;
                 const attributeValueNode = path.get('value').node;
 
-                if (t.isJSXIdentifier(attributeNameNode, { name: 'className' }) && !t.isStringLiteral(attributeValueNode)) {
+                if (t.isJSXIdentifier(attributeNameNode, { name: 'className' })) {
                     if (t.isJSXExpressionContainer(attributeValueNode)) {
-                        debugger
 
                     }
                 }
-                debugger
-                const attribute = path.node;
 
             },
         },
@@ -111,16 +118,45 @@ const replaceClassNamesToModulePlugin = (): babel.PluginObj => {
 }
 
 filePaths.forEach(filePath => {
-    let code = readFile(filePath)
-    let transformResult = babel.transform(code, {
-        presets: [['@babel/preset-typescript', {
-            isTSX: true,
-            allExtensions: true,
-        }]],
-        plugins: [
-            replaceClassNamesToModulePlugin
-        ]
-    })
+    // let folderPath = filePath.replace(/\[a-zA-Z0-9_.-]+\.(tsx)/g, '');
+    let folderPath = filePath.replace(/\\[a-zA-Z0-9_.-]+\.(tsx|css)/g, '');
 
-    // fs.writeFile('./result.tsx', transformResult.code);
+    if (!isComponent(filePath) && !isCss(filePath)) {
+        return
+    }
+
+    debugger
+
+    if (isCss(filePath) && !isCssModule(filePath)) {
+        if (!fs.existsSync(path.resolve(rootDir, 'dist', folderPath))) {
+            fs.mkdirSync(path.resolve(rootDir, 'dist', folderPath), { recursive: true });
+        }
+        fs.copyFile(filePath, filePath.replace(/\.css/, '.module.css'), err => {
+            debugger
+        })
+    }
+
+    if (isComponent(filePath)) {
+        let code = readFile(filePath)
+        let transformResult = babel.transform(code, {
+            presets: [['@babel/preset-typescript', {
+                isTSX: true,
+                allExtensions: true,
+            }]],
+            plugins: [
+                replaceClassNamesToModulePlugin
+            ]
+        })
+        try {
+            if (!fs.existsSync(path.resolve(rootDir, 'dist', folderPath))) {
+                fs.mkdirSync(path.resolve(rootDir, 'dist', folderPath), { recursive: true });
+            }
+
+            // fs.writeFile(path.resolve(rootDir, 'dist', filePath), transformResult.code, err => {
+            //     console.error(err)
+            // });
+        } catch (err) {
+            console.error(err);
+        }
+    }
 })
